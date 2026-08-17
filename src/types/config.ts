@@ -148,6 +148,34 @@ export interface AppConfig {
     circuit_breaker: CircuitBreakerConfig; // [NEW] 熔断器配置
     proxy: ProxyConfig;
     cloudflared: CloudflaredConfig; // [NEW] Cloudflared 配置
+    proxy_launcher?: ProxyLauncherConfig; // [NEW] 免 TUN 代理启动配置
+}
+
+// ============================================================================
+// 免 TUN 代理启动配置与状态定义
+// ============================================================================
+
+export interface ProxyLauncherConfig {
+    enabled: boolean;
+    proxy_url: string;
+    no_proxy: string;
+    mode: 'vbs_silent' | 'cmd_batch' | 'direct_process' | string;
+}
+
+export interface AntigravityProcessStatus {
+    is_running: boolean;
+    pids: number[];
+    executable_path?: string;
+    detected_type?: string;
+    launcher_proxy_enabled: boolean;
+    proxy_url?: string;
+}
+
+export interface ProxyTestResult {
+    success: boolean;
+    latency_ms: number;
+    message: string;
+    resolved_address?: string;
 }
 
 // ============================================================================

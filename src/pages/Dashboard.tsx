@@ -8,6 +8,7 @@ import { showToast } from '../components/common/ToastContainer';
 import BestAccounts from '../components/dashboard/BestAccounts';
 import { findImageQuotaModel, findQuotaModel } from '../config/modelConfig';
 import CurrentAccount from '../components/dashboard/CurrentAccount';
+import AntigravityLauncherCard from '../components/dashboard/AntigravityLauncherCard';
 import { exportAccounts } from '../services/accountService';
 import { useAccountStore } from '../stores/useAccountStore';
 import { Account } from '../types/account';
@@ -273,6 +274,9 @@ function Dashboard() {
                         <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{t('dashboard.quota_desc')}</div>
                     </div>
                 </div>
+
+                {/* Antigravity 启动与免 TUN 代理控制卡片 */}
+                <AntigravityLauncherCard />
 
                 {/* 双栏布局 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

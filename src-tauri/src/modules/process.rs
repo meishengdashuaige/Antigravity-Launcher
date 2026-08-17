@@ -745,10 +745,59 @@ pub fn close_antigravity(timeout_secs: u64, target_ide: Option<&str>) -> Result<
     Ok(())
 }
 
-/// Start Antigravity
+/// Antigravity process and proxy status structure
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AntigravityProcessStatus {
+    pub is_running: bool,
+    pub pids: Vec<u32>,
+    pub executable_path: Option<String>,
+    pub detected_type: Option<String>,
+    pub launcher_proxy_enabled: bool,
+    pub proxy_url: Option<String>,
+}
+
+/// Helper function to inject standard proxy environment variables into Command
+fn inject_proxy_environment(
+    cmd: &mut Command,
+    proxy_config: Option<&crate::models::config::ProxyLauncherConfig>,
+) {
+    if let Some(cfg) = proxy_config {
+        if cfg.enabled && !cfg.proxy_url.trim().is_empty() {
+            let proxy_url = cfg.proxy_url.trim();
+            let no_proxy = if cfg.no_proxy.trim().is_empty() {
+                "localhost,127.0.0.1,::1"
+            } else {
+                cfg.no_proxy.trim()
+            };
+
+            crate::modules::logger::log_info(&format!(
+                "Injecting proxy environment variables for Antigravity: HTTP_PROXY={}, NO_PROXY={}",
+                proxy_url, no_proxy
+            ));
+
+            cmd.env("HTTP_PROXY", proxy_url);
+            cmd.env("HTTPS_PROXY", proxy_url);
+            cmd.env("ALL_PROXY", proxy_url);
+            cmd.env("NO_PROXY", no_proxy);
+            cmd.env("http_proxy", proxy_url);
+            cmd.env("https_proxy", proxy_url);
+            cmd.env("all_proxy", proxy_url);
+            cmd.env("no_proxy", no_proxy);
+        }
+    }
+}
+
+/// Start Antigravity with optional explicit proxy configuration
 #[allow(unused_mut)]
-pub fn start_antigravity(target_ide: Option<&str>) -> Result<(), String> {
-    crate::modules::logger::log_info(&format!("Starting Antigravity ({:?})...", target_ide));
+pub fn start_antigravity_with_proxy(
+    target_ide: Option<&str>,
+    proxy_config: Option<&crate::models::config::ProxyLauncherConfig>,
+) -> Result<(), String> {
+    crate::modules::logger::log_info(&format!(
+        "Starting Antigravity ({:?}, proxy_enabled: {:?})...",
+        target_ide,
+        proxy_config.map(|p| p.enabled)
+    ));
 
     // Prefer manually specified path and args from configuration
     let config = crate::modules::config::load_app_config().ok();
@@ -761,7 +810,7 @@ pub fn start_antigravity(target_ide: Option<&str>) -> Result<(), String> {
             .as_ref()
             .and_then(|c| c.antigravity_executable.clone())
     };
-    let args = config.and_then(|c| c.antigravity_args.clone());
+    let args = config.as_ref().and_then(|c| c.antigravity_args.clone());
 
     if let Some(mut path_str) = manual_path {
         let mut path = std::path::PathBuf::from(&path_str);
@@ -790,10 +839,20 @@ pub fn start_antigravity(target_ide: Option<&str>) -> Result<(), String> {
 
             #[cfg(target_os = "macos")]
             {
-                // macOS: if .app directory, use open
-                if path_str.ends_with(".app") || path.is_dir() {
+                let inner_exe = path.join("Contents/MacOS").join(if target_ide == Some("ide") { "Antigravity IDE" } else { "Antigravity" });
+                if inner_exe.exists() {
+                    let mut cmd = Command::new(&inner_exe);
+                    inject_proxy_environment(&mut cmd, proxy_config);
+                    if let Some(ref args) = args {
+                        for arg in args {
+                            cmd.arg(arg);
+                        }
+                    }
+                    cmd.spawn().map_err(|e| format!("Startup failed (inner binary): {}", e))?;
+                } else if path_str.ends_with(".app") || path.is_dir() {
                     let mut cmd = Command::new("open");
                     cmd.arg("-a").arg(&path_str);
+                    inject_proxy_environment(&mut cmd, proxy_config);
 
                     // Add startup arguments
                     if let Some(ref args) = args {
@@ -806,6 +865,7 @@ pub fn start_antigravity(target_ide: Option<&str>) -> Result<(), String> {
                         .map_err(|e| format!("Startup failed (open): {}", e))?;
                 } else {
                     let mut cmd = Command::new(&path_str);
+                    inject_proxy_environment(&mut cmd, proxy_config);
 
                     // Add startup arguments
                     if let Some(ref args) = args {
@@ -822,6 +882,7 @@ pub fn start_antigravity(target_ide: Option<&str>) -> Result<(), String> {
             #[cfg(not(target_os = "macos"))]
             {
                 let mut cmd = Command::new(&path_str);
+                inject_proxy_environment(&mut cmd, proxy_config);
 
                 // Add startup arguments
                 if let Some(ref args) = args {
@@ -829,6 +890,9 @@ pub fn start_antigravity(target_ide: Option<&str>) -> Result<(), String> {
                         cmd.arg(arg);
                     }
                 }
+
+                #[cfg(target_os = "windows")]
+                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
                 cmd.spawn().map_err(|e| format!("Startup failed: {}", e))?;
             }
@@ -848,31 +912,43 @@ pub fn start_antigravity(target_ide: Option<&str>) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        // Improvement: Use output() to wait for open command completion and capture "app not found" error
-        let mut cmd = Command::new("open");
         let app_name = if target_ide == Some("ide") {
             "Antigravity IDE"
         } else {
             "Antigravity"
         };
-        cmd.args(["-a", app_name]);
+        let inner_candidate = std::path::PathBuf::from(format!("/Applications/{}.app/Contents/MacOS/{}", app_name, app_name));
+        if inner_candidate.exists() {
+            let mut cmd = Command::new(&inner_candidate);
+            inject_proxy_environment(&mut cmd, proxy_config);
+            if let Some(ref args) = args {
+                for arg in args {
+                    cmd.arg(arg);
+                }
+            }
+            cmd.spawn().map_err(|e| format!("Startup failed (inner MacOS): {}", e))?;
+        } else {
+            let mut cmd = Command::new("open");
+            cmd.args(["-a", app_name]);
+            inject_proxy_environment(&mut cmd, proxy_config);
 
-        // Add startup arguments
-        if let Some(ref args) = args {
-            for arg in args {
-                cmd.arg(arg);
+            // Add startup arguments
+            if let Some(ref args) = args {
+                for arg in args {
+                    cmd.arg(arg);
+                }
+            }
+
+            let output = cmd
+                .output()
+                .map_err(|e| format!("Execute open command failed: {}", e))?;
+            if !output.status.success() {
+                let err_msg = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("Startup failed: {}", err_msg.trim()));
             }
         }
 
-        let output = cmd
-            .output()
-            .map_err(|e| format!("Execute open command failed: {}", e))?;
-        if !output.status.success() {
-            let err_msg = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Startup failed: {}", err_msg.trim()));
-        }
-
-        crate::modules::logger::log_info("Antigravity startup command sent (macOS open)");
+        crate::modules::logger::log_info("Antigravity startup command sent (macOS)");
         return Ok(());
     }
 
@@ -880,7 +956,19 @@ pub fn start_antigravity(target_ide: Option<&str>) -> Result<(), String> {
     {
         // Windows/Linux Auto-detection and Startup
         if let Some(detected_path) = get_antigravity_executable_path(target_ide) {
+            #[cfg(target_os = "windows")]
+            if target_ide == Some("cli") {
+                let mut cmd = Command::new("cmd.exe");
+                inject_proxy_environment(&mut cmd, proxy_config);
+                let cli_str = detected_path.to_string_lossy().to_string();
+                cmd.args(["/c", "start", "Antigravity CLI", "cmd.exe", "/k", &format!("\"{}\"", cli_str)]);
+                cmd.spawn().map_err(|e| format!("Startup CLI failed: {}", e))?;
+                crate::modules::logger::log_info(&format!("Antigravity CLI started via cmd window: {:?}", detected_path));
+                return Ok(());
+            }
+
             let mut cmd = Command::new(&detected_path);
+            inject_proxy_environment(&mut cmd, proxy_config);
 
             // Add startup arguments
             if let Some(ref args) = args {
@@ -904,6 +992,63 @@ pub fn start_antigravity(target_ide: Option<&str>) -> Result<(), String> {
         } else {
             Err("Unable to start Antigravity: executable not found".to_string())
         }
+    }
+}
+
+/// Start Antigravity (using default config)
+pub fn start_antigravity(target_ide: Option<&str>) -> Result<(), String> {
+    let config = crate::modules::config::load_app_config().ok();
+    let proxy_cfg = config.as_ref().map(|c| &c.proxy_launcher);
+    start_antigravity_with_proxy(target_ide, proxy_cfg)
+}
+
+/// Restart Antigravity with optional explicit proxy mode
+pub fn restart_antigravity(target_ide: Option<&str>, use_proxy: Option<bool>) -> Result<(), String> {
+    crate::modules::logger::log_info(&format!(
+        "Restarting Antigravity ({:?}, use_proxy: {:?})...",
+        target_ide, use_proxy
+    ));
+
+    // Close any running instance
+    let _ = close_antigravity(8, target_ide);
+    thread::sleep(Duration::from_millis(500));
+
+    let config = crate::modules::config::load_app_config().ok();
+    let mut proxy_cfg = config.map(|c| c.proxy_launcher).unwrap_or_default();
+    if let Some(explicit) = use_proxy {
+        proxy_cfg.enabled = explicit;
+    }
+
+    start_antigravity_with_proxy(target_ide, Some(&proxy_cfg))
+}
+
+/// Close Antigravity process
+pub fn close_antigravity_process(target_ide: Option<&str>) -> Result<(), String> {
+    close_antigravity(10, target_ide)
+}
+
+/// Get current Antigravity process status
+pub fn get_antigravity_process_status(target_ide: Option<&str>) -> AntigravityProcessStatus {
+    let pids = get_antigravity_pids(target_ide);
+    let is_running = !pids.is_empty();
+    let detected_path = get_antigravity_executable_path(target_ide)
+        .map(|p| p.to_string_lossy().to_string());
+    let config = crate::modules::config::load_app_config().ok();
+    let launcher_proxy_enabled = config.as_ref().map_or(false, |c| c.proxy_launcher.enabled);
+    let proxy_url = config.as_ref().map(|c| c.proxy_launcher.proxy_url.clone());
+    let detected_type = Some(match target_ide {
+        Some("ide") => "Antigravity IDE".to_string(),
+        Some("cli") => "Antigravity CLI".to_string(),
+        _ => "Antigravity".to_string(),
+    });
+
+    AntigravityProcessStatus {
+        is_running,
+        pids,
+        executable_path: detected_path,
+        detected_type,
+        launcher_proxy_enabled,
+        proxy_url,
     }
 }
 
@@ -1098,6 +1243,14 @@ pub fn get_antigravity_executable_path(target_ide: Option<&str>) -> Option<std::
                     }
                 }
             }
+            Some("cli") => {
+                if let Some(ref p) = config.antigravity_cli_executable {
+                    let path = std::path::PathBuf::from(p);
+                    if path.exists() {
+                        return Some(path);
+                    }
+                }
+            }
             _ => {
                 // Try antigravity_executable first (closest match for target_ide=None)
                 if let Some(ref p) = config.antigravity_executable {
@@ -1116,6 +1269,68 @@ pub fn get_antigravity_executable_path(target_ide: Option<&str>) -> Option<std::
 
 /// Check standard installation locations
 fn check_standard_locations(target_ide: Option<&str>) -> Option<std::path::PathBuf> {
+    if target_ide == Some("cli") {
+        #[cfg(target_os = "windows")]
+        {
+            use std::env;
+            let mut possible_paths = Vec::new();
+            if let Ok(local) = env::var("LOCALAPPDATA") {
+                possible_paths.push(std::path::PathBuf::from(&local).join("Programs").join("Antigravity").join("bin").join("agy.cmd"));
+                possible_paths.push(std::path::PathBuf::from(&local).join("Programs").join("Antigravity").join("bin").join("agy.exe"));
+                possible_paths.push(std::path::PathBuf::from(&local).join("Programs").join("Antigravity").join("agy.exe"));
+                possible_paths.push(std::path::PathBuf::from(&local).join("Programs").join("Antigravity CLI").join("agy.exe"));
+                possible_paths.push(std::path::PathBuf::from(&local).join(".antigravity").join("bin").join("agy.exe"));
+                possible_paths.push(std::path::PathBuf::from(&local).join(".gemini").join("antigravity-cli").join("agy.exe"));
+            }
+            if let Ok(userprofile) = env::var("USERPROFILE") {
+                possible_paths.push(std::path::PathBuf::from(&userprofile).join(".antigravity").join("bin").join("agy.exe"));
+                possible_paths.push(std::path::PathBuf::from(&userprofile).join(".gemini").join("antigravity-cli").join("agy.exe"));
+                possible_paths.push(std::path::PathBuf::from(&userprofile).join(".cargo").join("bin").join("agy.exe"));
+            }
+            for path in possible_paths {
+                if path.exists() {
+                    return Some(path);
+                }
+            }
+            // Scan system PATH in memory without spawning child process
+            if let Some(paths) = env::var_os("PATH") {
+                for p in env::split_paths(&paths) {
+                    let candidate_exe = p.join("agy.exe");
+                    if candidate_exe.exists() {
+                        return Some(candidate_exe);
+                    }
+                    let candidate_cmd = p.join("agy.cmd");
+                    if candidate_cmd.exists() {
+                        return Some(candidate_cmd);
+                    }
+                    let candidate_bat = p.join("agy.bat");
+                    if candidate_bat.exists() {
+                        return Some(candidate_bat);
+                    }
+                }
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let possible_paths = vec![
+                std::path::PathBuf::from("/usr/local/bin/agy"),
+                std::path::PathBuf::from("/usr/bin/agy"),
+            ];
+            if let Some(home) = dirs::home_dir() {
+                let user_local = home.join(".local/bin/agy");
+                if user_local.exists() {
+                    return Some(user_local);
+                }
+            }
+            for path in possible_paths {
+                if path.exists() {
+                    return Some(path);
+                }
+            }
+        }
+        return None;
+    }
+
     let folder_names: &[&str] = if target_ide == Some("ide") {
         &["Antigravity IDE"]
     } else if target_ide == Some("code") || target_ide == Some("cursor") {

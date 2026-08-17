@@ -32,6 +32,56 @@ pub struct AppConfig {
     pub hidden_menu_items: Vec<String>, // Hidden menu item path list
     #[serde(default)]
     pub cloudflared: CloudflaredConfig, // [NEW] Cloudflared configuration
+    #[serde(default)]
+    pub proxy_launcher: ProxyLauncherConfig, // [NEW] Proxy launcher configuration
+}
+
+/// Proxy launcher configuration for launching Antigravity via proxy (免 TUN 模式)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyLauncherConfig {
+    /// Whether launch via proxy is enabled by default
+    pub enabled: bool,
+
+    /// Local proxy URL (e.g. http://127.0.0.1:7897 or http://127.0.0.1:7890 or socks5://127.0.0.1:7890)
+    #[serde(default = "default_launcher_proxy_url")]
+    pub proxy_url: String,
+
+    /// Bypass proxy list (NO_PROXY)
+    #[serde(default = "default_launcher_no_proxy")]
+    pub no_proxy: String,
+
+    /// Launch mode: "vbs_silent", "cmd_batch", "direct_process"
+    #[serde(default = "default_launcher_mode")]
+    pub mode: String,
+}
+
+fn default_launcher_proxy_url() -> String {
+    "http://127.0.0.1:7897".to_string()
+}
+
+fn default_launcher_no_proxy() -> String {
+    "localhost,127.0.0.1,::1".to_string()
+}
+
+fn default_launcher_mode() -> String {
+    "vbs_silent".to_string()
+}
+
+impl ProxyLauncherConfig {
+    pub fn new() -> Self {
+        Self {
+            enabled: false,
+            proxy_url: default_launcher_proxy_url(),
+            no_proxy: default_launcher_no_proxy(),
+            mode: default_launcher_mode(),
+        }
+    }
+}
+
+impl Default for ProxyLauncherConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Scheduled warmup configuration
@@ -192,6 +242,7 @@ impl AppConfig {
             circuit_breaker: CircuitBreakerConfig::default(),
             hidden_menu_items: Vec::new(),
             cloudflared: CloudflaredConfig::default(),
+            proxy_launcher: ProxyLauncherConfig::default(),
         }
     }
 }

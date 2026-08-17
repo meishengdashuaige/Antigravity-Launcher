@@ -45,6 +45,27 @@ pub fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
+    let launch_ag = MenuItem::with_id(
+        app,
+        "launch_antigravity",
+        &texts.launch_antigravity,
+        true,
+        None::<&str>,
+    )?;
+    let launch_ide = MenuItem::with_id(
+        app,
+        "launch_antigravity_ide",
+        &texts.launch_antigravity_ide,
+        true,
+        None::<&str>,
+    )?;
+    let launch_cli = MenuItem::with_id(
+        app,
+        "launch_antigravity_cli",
+        &texts.launch_antigravity_cli,
+        true,
+        None::<&str>,
+    )?;
 
     // System functions
     let show_i = MenuItem::with_id(app, "show", &texts.show_window, true, None::<&str>)?;
@@ -52,6 +73,7 @@ pub fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
+    let sep_launcher = PredefinedMenuItem::separator(app)?;
     let sep3 = PredefinedMenuItem::separator(app)?;
 
     // 4. Build menu
@@ -63,6 +85,10 @@ pub fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             &sep1,
             &switch_next,
             &refresh_curr,
+            &sep_launcher,
+            &launch_ag,
+            &launch_ide,
+            &launch_cli,
             &sep2,
             &show_i,
             &sep3,
@@ -87,6 +113,30 @@ pub fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                         app.set_activation_policy(tauri::ActivationPolicy::Regular)
                             .unwrap_or(());
                     }
+                }
+                "launch_antigravity" => {
+                    tauri::async_runtime::spawn(async move {
+                        let config = modules::load_app_config().ok();
+                        let mut proxy_cfg = config.map(|c| c.proxy_launcher).unwrap_or_default();
+                        proxy_cfg.enabled = true;
+                        let _ = modules::process::start_antigravity_with_proxy(None, Some(&proxy_cfg));
+                    });
+                }
+                "launch_antigravity_ide" => {
+                    tauri::async_runtime::spawn(async move {
+                        let config = modules::load_app_config().ok();
+                        let mut proxy_cfg = config.map(|c| c.proxy_launcher).unwrap_or_default();
+                        proxy_cfg.enabled = true;
+                        let _ = modules::process::start_antigravity_with_proxy(Some("ide"), Some(&proxy_cfg));
+                    });
+                }
+                "launch_antigravity_cli" => {
+                    tauri::async_runtime::spawn(async move {
+                        let config = modules::load_app_config().ok();
+                        let mut proxy_cfg = config.map(|c| c.proxy_launcher).unwrap_or_default();
+                        proxy_cfg.enabled = true;
+                        let _ = modules::process::start_antigravity_with_proxy(Some("cli"), Some(&proxy_cfg));
+                    });
                 }
                 "quit" => {
                     // 先停止 Admin Server 和反代服务，避免进程残留和端口占用
@@ -230,7 +280,7 @@ pub fn update_tray_menus(app: &tauri::AppHandle) {
 
                 if let Some(q) = account.quota {
                     if q.is_forbidden {
-                        menu_lines.push(format!("🚫 {}", texts.forbidden));
+                        menu_lines.push(texts.forbidden.clone());
                     } else {
                         // Extract the 3 specified models
                         let mut gemini_high = 0;
@@ -298,14 +348,36 @@ pub fn update_tray_menus(app: &tauri::AppHandle) {
             true,
             None::<&str>,
         );
+        let launch_ag = MenuItem::with_id(
+            &app_clone,
+            "launch_antigravity",
+            &texts.launch_antigravity,
+            true,
+            None::<&str>,
+        );
+        let launch_ide = MenuItem::with_id(
+            &app_clone,
+            "launch_antigravity_ide",
+            &texts.launch_antigravity_ide,
+            true,
+            None::<&str>,
+        );
+        let launch_cli = MenuItem::with_id(
+            &app_clone,
+            "launch_antigravity_cli",
+            &texts.launch_antigravity_cli,
+            true,
+            None::<&str>,
+        );
 
         let show_i = MenuItem::with_id(&app_clone, "show", &texts.show_window, true, None::<&str>);
         let quit_i = MenuItem::with_id(&app_clone, "quit", &texts.quit, true, None::<&str>);
 
-        if let (Ok(i_u), Ok(s_n), Ok(r_c), Ok(s), Ok(q)) =
-            (info_user, switch_next, refresh_curr, show_i, quit_i)
+        if let (Ok(i_u), Ok(s_n), Ok(r_c), Ok(l_ag), Ok(l_ide), Ok(l_cli), Ok(s), Ok(q)) =
+            (info_user, switch_next, refresh_curr, launch_ag, launch_ide, launch_cli, show_i, quit_i)
         {
             let sep1 = PredefinedMenuItem::separator(&app_clone).ok();
+            let sep_launcher = PredefinedMenuItem::separator(&app_clone).ok();
             let sep2 = PredefinedMenuItem::separator(&app_clone).ok();
             let sep3 = PredefinedMenuItem::separator(&app_clone).ok();
 
@@ -320,6 +392,12 @@ pub fn update_tray_menus(app: &tauri::AppHandle) {
             }
             items.push(&s_n);
             items.push(&r_c);
+            if let Some(ref s) = sep_launcher {
+                items.push(s);
+            }
+            items.push(&l_ag);
+            items.push(&l_ide);
+            items.push(&l_cli);
             if let Some(ref s) = sep2 {
                 items.push(s);
             }

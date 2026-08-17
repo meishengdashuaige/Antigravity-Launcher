@@ -1234,3 +1234,142 @@ pub async fn query_transit_info(url: String, key: String) -> Result<String, Stri
         Err(format!("HTTP {}: {}", status, text))
     }
 }
+
+// ============================================================================
+// Antigravity 免 TUN 代理启动与控制命令
+// ============================================================================
+
+/// 启动 Antigravity（支持自定义或全局代理配置）
+#[tauri::command]
+pub async fn launch_antigravity(
+    target_ide: Option<String>,
+    use_proxy: Option<bool>,
+    proxy_url: Option<String>,
+    no_proxy: Option<String>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let config = crate::modules::config::load_app_config().ok();
+        let mut proxy_cfg = config.map(|c| c.proxy_launcher).unwrap_or_default();
+
+        if let Some(enabled) = use_proxy {
+            proxy_cfg.enabled = enabled;
+        }
+        if let Some(url) = proxy_url {
+            if !url.trim().is_empty() {
+                proxy_cfg.proxy_url = url;
+            }
+        }
+        if let Some(np) = no_proxy {
+            proxy_cfg.no_proxy = np;
+        }
+
+        crate::modules::process::start_antigravity_with_proxy(
+            target_ide.as_deref(),
+            Some(&proxy_cfg),
+        )
+    })
+    .await
+    .unwrap_or_else(|_| Err("Task panicked".to_string()))
+}
+
+/// 重启 Antigravity
+#[tauri::command]
+pub async fn restart_antigravity(
+    target_ide: Option<String>,
+    use_proxy: Option<bool>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        crate::modules::process::restart_antigravity(target_ide.as_deref(), use_proxy)
+    })
+    .await
+    .unwrap_or_else(|_| Err("Task panicked".to_string()))
+}
+
+/// 关闭 Antigravity 进程
+#[tauri::command]
+pub async fn close_antigravity(target_ide: Option<String>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        crate::modules::process::close_antigravity_process(target_ide.as_deref())
+    })
+    .await
+    .unwrap_or_else(|_| Err("Task panicked".to_string()))
+}
+
+/// 获取 Antigravity 当前运行与代理状态
+#[tauri::command]
+pub async fn get_antigravity_process_status(
+    target_ide: Option<String>,
+) -> Result<crate::modules::process::AntigravityProcessStatus, String> {
+    tokio::task::spawn_blocking(move || {
+        Ok(crate::modules::process::get_antigravity_process_status(
+            target_ide.as_deref(),
+        ))
+    })
+    .await
+    .unwrap_or_else(|_| Err("Task panicked".to_string()))
+}
+
+/// 一键创建免 TUN 代理桌面快捷方式
+#[tauri::command]
+pub async fn create_proxy_desktop_shortcut(
+    target_ide: Option<String>,
+    proxy_url: Option<String>,
+    no_proxy: Option<String>,
+    shortcut_name: Option<String>,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let config = crate::modules::config::load_app_config().ok();
+        let default_cfg = config.map(|c| c.proxy_launcher).unwrap_or_default();
+
+        let final_proxy = proxy_url.unwrap_or(default_cfg.proxy_url);
+        let final_no_proxy = no_proxy.unwrap_or(default_cfg.no_proxy);
+
+        crate::modules::launcher_script::create_desktop_shortcut(
+            target_ide.as_deref(),
+            &final_proxy,
+            &final_no_proxy,
+            shortcut_name.as_deref(),
+        )
+    })
+    .await
+    .unwrap_or_else(|_| Err("Task panicked".to_string()))
+}
+
+/// 生成或导出免 TUN 代理启动脚本内容
+#[tauri::command]
+pub async fn generate_proxy_launch_script(
+    target_ide: Option<String>,
+    proxy_url: Option<String>,
+    no_proxy: Option<String>,
+    script_type: String,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let config = crate::modules::config::load_app_config().ok();
+        let default_cfg = config.map(|c| c.proxy_launcher).unwrap_or_default();
+
+        let final_proxy = proxy_url.unwrap_or(default_cfg.proxy_url);
+        let final_no_proxy = no_proxy.unwrap_or(default_cfg.no_proxy);
+
+        crate::modules::launcher_script::generate_launch_script(
+            target_ide.as_deref(),
+            &final_proxy,
+            &final_no_proxy,
+            &script_type,
+        )
+    })
+    .await
+    .unwrap_or_else(|_| Err("Task panicked".to_string()))
+}
+
+/// 测试本地代理连通性
+#[tauri::command]
+pub async fn test_proxy_connection(
+    proxy_url: String,
+) -> Result<crate::modules::launcher_script::ProxyTestResult, String> {
+    tokio::task::spawn_blocking(move || {
+        crate::modules::launcher_script::test_proxy_connection(&proxy_url)
+    })
+    .await
+    .unwrap_or_else(|_| Err("Task panicked".to_string()))
+}
+

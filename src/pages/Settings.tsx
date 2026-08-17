@@ -14,13 +14,17 @@ import { useDebugConsole } from '../stores/useDebugConsole';
 import { useTranslation } from 'react-i18next';
 import { isTauri } from '../utils/env';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { useSearchParams, useLocation } from 'react-router-dom';
 
 import DebugConsole from '../components/debug/DebugConsole';
 import ProxyPoolSettings from '../components/settings/ProxyPoolSettings';
+import ProxyLauncherSettings from '../components/settings/ProxyLauncherSettings';
 
 
 function Settings() {
     const { t, i18n } = useTranslation();
+    const [searchParams] = useSearchParams();
+    const location = useLocation();
     const { config, loadConfig, saveConfig, updateLanguage, updateTheme } = useConfigStore();
     const { enable, disable, isEnabled } = useDebugConsole();
     const [activeTab, setActiveTab] = useState<'general' | 'account' | 'proxy' | 'advanced' | 'debug' | 'about'>('general');
@@ -109,6 +113,13 @@ function Settings() {
     const [isBrewConfirmOpen, setIsBrewConfirmOpen] = useState(false);
     const [isBrewSuccessOpen, setIsBrewSuccessOpen] = useState(false);
 
+
+    useEffect(() => {
+        const tabParam = searchParams.get('tab') || (location.state as any)?.tab;
+        if (tabParam && ['general', 'account', 'proxy', 'advanced', 'debug', 'about'].includes(tabParam)) {
+            setActiveTab(tabParam as any);
+        }
+    }, [searchParams, location.state]);
 
     useEffect(() => {
         loadConfig();
@@ -865,7 +876,10 @@ function Settings() {
                     {/* 高级设置 */}
                     {activeTab === 'advanced' && (
                         <>
-                            <div className="space-y-4">
+                            <div className="space-y-6">
+                                {/* 免 TUN 代理启动设置专区 */}
+                                <ProxyLauncherSettings formData={formData} setFormData={setFormData} />
+
                                 {/* 默认导出路径 */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-900 dark:text-base-content mb-1">{t('settings.advanced.export_path')}</label>

@@ -8,6 +8,10 @@ pub struct TrayTexts {
     pub quota: String,
     pub switch_next: String,
     pub refresh_current: String,
+    pub launch_antigravity: String,
+    pub launch_antigravity_ide: String,
+    pub launch_antigravity_cli: String,
+    pub restart_antigravity: String,
     pub show_window: String,
     pub quit: String,
     pub no_account: String,
@@ -72,6 +76,22 @@ pub fn get_tray_texts(lang: &str) -> TrayTexts {
             .get("refresh_current")
             .cloned()
             .unwrap_or_else(|| "Refresh Current Quota".to_string()),
+        launch_antigravity: t
+            .get("launch_antigravity")
+            .cloned()
+            .unwrap_or_else(|| "Launch Antigravity".to_string()),
+        launch_antigravity_ide: t
+            .get("launch_antigravity_ide")
+            .cloned()
+            .unwrap_or_else(|| "Launch Antigravity IDE".to_string()),
+        launch_antigravity_cli: t
+            .get("launch_antigravity_cli")
+            .cloned()
+            .unwrap_or_else(|| "Launch Antigravity CLI".to_string()),
+        restart_antigravity: t
+            .get("restart_antigravity")
+            .cloned()
+            .unwrap_or_else(|| "Restart Antigravity".to_string()),
         show_window: t
             .get("show_window")
             .cloned()
