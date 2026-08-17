@@ -23,7 +23,7 @@ function Dashboard() {
         currentAccount,
         fetchAccounts,
         fetchCurrentAccount,
-        switchAccount,
+        setCurrentAccount,
         addAccount,
         refreshQuota,
         loading
@@ -81,7 +81,7 @@ function Dashboard() {
         isSwitchingRef.current = true;
         console.log('[Dashboard] handleSwitch called for', accountId);
         try {
-            await switchAccount(accountId);
+            await setCurrentAccount(accountId);
             showToast(t('dashboard.toast.switch_success'), 'success');
         } catch (error) {
             console.error('切换账号失败:', error);

@@ -45,6 +45,7 @@ import {
     Bot,
     Repeat2,
     Terminal,
+    UserCheck,
 } from 'lucide-react';
 import type { Account, ModelQuota } from '../../types/account';
 import { useTranslation } from 'react-i18next';
@@ -70,6 +71,7 @@ interface AccountTableProps {
     currentAccountId: string | null;
     switchingAccountId: string | null;
     onSwitch: (accountId: string, targetIde?: string) => void;
+    onSetCurrent?: (accountId: string) => void;
     onRefresh: (accountId: string) => void;
     onViewDevice: (accountId: string) => void;
     onViewDetails: (accountId: string) => void;
@@ -92,6 +94,7 @@ interface SortableRowProps {
     isDragging?: boolean;
     onSelect: () => void;
     onSwitch: (targetIde?: string) => void;
+    onSetCurrent?: () => void;
     onRefresh: () => void;
     onViewDevice: () => void;
     onViewDetails: () => void;
@@ -110,6 +113,7 @@ interface AccountRowContentProps {
     isSwitching: boolean;
     isDisabled: boolean;
     onSwitch: (targetIde?: string) => void;
+    onSetCurrent?: () => void;
     onRefresh: () => void;
     onViewDevice: () => void;
     onViewDetails: () => void;
@@ -168,6 +172,7 @@ function SortableAccountRow({
     isDragging,
     onSelect,
     onSwitch,
+    onSetCurrent,
     onRefresh,
     onViewDevice,
     onViewDetails,
@@ -234,6 +239,7 @@ function SortableAccountRow({
                 isSwitching={isSwitching}
                 isDisabled={Boolean(account.disabled)}
                 onSwitch={onSwitch}
+                onSetCurrent={onSetCurrent}
                 onRefresh={onRefresh}
                 onViewDevice={onViewDevice}
                 onViewDetails={onViewDetails}
@@ -252,6 +258,14 @@ function SortableAccountRow({
  * 账号行内容组件
  * 渲染邮箱、配额、最后使用时间和操作按钮等列
  */
+// 使用统一的模型配置
+const DEFAULT_MODELS = Object.entries(MODEL_CONFIG).map(([id, config]) => ({
+    id,
+    label: config.label,
+    protectedKey: config.protectedKey,
+    Icon: config.Icon
+}));
+
 function AccountRowContent({
     account,
     isCurrent,
@@ -259,6 +273,7 @@ function AccountRowContent({
     isSwitching,
     isDisabled,
     onSwitch,
+    onSetCurrent,
     onRefresh,
     onViewDevice,
     onViewDetails,
@@ -297,68 +312,52 @@ function AccountRowContent({
         }
     };
 
-    // 使用统一的模型配置
+    // 格式化模型配额数据
+    const displayModels = useMemo(() => {
+        const accountModels = account.quota?.models?.map(m => {
+            const fullConfig = MODEL_CONFIG[m.name.toLowerCase()];
+            return {
+                id: m.name,
+                label: m.display_name || (fullConfig?.i18nKey ? t(fullConfig.i18nKey) : (fullConfig?.shortLabel || fullConfig?.label || m.name)),
+                protectedKey: getModelProtectionKey(m.name) ?? fullConfig?.protectedKey ?? m.name,
+                data: m
+            };
+        }) || [];
 
-    // 获取要显示的模型列表
-    const pinnedModels = ensurePinnedImageSelector(
-        config?.pinned_quota_models?.models || Object.keys(MODEL_CONFIG),
-    );
+        let models: typeof accountModels;
 
-    // 根据 show_all 状态决定显示哪些模型
-    const uniqueLabels = new Set<string>();
-    const displayModels = sortModels(
-        (showAllQuotas
-            ? (account.quota?.models || []).map(m => {
-                const config = MODEL_CONFIG[m.name.toLowerCase()];
-                const label = m.display_name || (config?.i18nKey ? t(config.i18nKey) : (config?.shortLabel || config?.label || m.name));
-                return {
-                    id: m.name.toLowerCase(),
-                    label: label,
-                    protectedKey: config?.protectedKey || m.name.toLowerCase(),
-                    data: m
-                };
-            })
-            : resolveQuotaModels(account.quota?.models, pinnedModels).map(sel => {
-                const selectorConfig = MODEL_CONFIG[sel.selectorId.toLowerCase()];
-                const resolvedConfig = sel.model ? MODEL_CONFIG[sel.model.name.toLowerCase()] : undefined;
-                if (!selectorConfig && !sel.model) return null;
-                const label = sel.model?.display_name
-                    || (resolvedConfig?.shortLabel || resolvedConfig?.label)
-                    || (selectorConfig?.shortLabel || selectorConfig?.label)
-                    || (resolvedConfig?.i18nKey ? t(resolvedConfig.i18nKey) : undefined)
-                    || (selectorConfig?.i18nKey ? t(selectorConfig.i18nKey) : undefined)
-                    || sel.selectorId;
-                return {
-                    id: sel.model?.name.toLowerCase() ?? sel.selectorId.toLowerCase(),
-                    label,
-                    protectedKey: getModelProtectionKey(sel.model?.name ?? sel.selectorId) ?? resolvedConfig?.protectedKey ?? selectorConfig?.protectedKey ?? sel.selectorId,
-                    data: sel.model,
-                };
-            }).filter((item): item is { id: string; label: string; protectedKey: string; data: ModelQuota | undefined } => item !== null)
-    ).filter(m => {
-            // 过滤特定的 Claude/Gemini 思考变体 (在列表页隐藏)
-            const isHiddenThinking = m.id.includes('thinking');
-
-            if (isHiddenThinking) return false;
-
-            // 基于标签去重 (例如 G3.1 Pro 只显示一次)
-            // 优先显示有配额数据的 ID
-            const labelKey = `${m.label}-${m.protectedKey}`;
-            if (uniqueLabels.has(labelKey)) {
-                return false;
+        if (showAllQuotas) {
+            models = accountModels;
+        } else {
+            const pinned = config?.pinned_quota_models?.models;
+            if (pinned && pinned.length > 0) {
+                const selections = resolveQuotaModels(
+                    accountModels.map(m => m.data),
+                    ensurePinnedImageSelector(pinned),
+                );
+                models = selections
+                    .map(sel => sel.model ? accountModels.find(am => am.data === sel.model) : undefined)
+                    .filter((m): m is typeof accountModels[number] => m !== undefined);
+                for (const sel of selections) {
+                    if (!sel.model) {
+                        const selectorConfig = MODEL_CONFIG[sel.selectorId.toLowerCase()];
+                        if (selectorConfig) {
+                            models = [...models, {
+                                id: sel.selectorId,
+                                label: selectorConfig.shortLabel || selectorConfig.label,
+                                protectedKey: selectorConfig.protectedKey,
+                                data: { name: sel.selectorId, percentage: 0 } as ModelQuota,
+                            }];
+                        }
+                    }
+                }
+            } else {
+                models = accountModels.filter(m => DEFAULT_MODELS.some(d => d.id === m.id) || m.data.display_name);
             }
-            if (m.data) {
-                uniqueLabels.add(labelKey);
-                return true;
-            }
-            return true;
-        })
-    ).filter((m, index, self) => {
-        // 第二次过滤：确保即使没有数据的重复 Label 也只保留一个
-        const labelKey = `${m.label}-${m.protectedKey}`;
-        return self.findIndex(t => `${t.label}-${t.protectedKey}` === labelKey) === index;
-    });
+        }
 
+        return sortModels(models).filter(m => m.id !== 'claude-sonnet-4-6-thinking' && m.id !== 'claude-sonnet-4-5-thinking' && m.id !== 'claude-opus-4-5-thinking');
+    }, [config, account, showAllQuotas, t]);
 
     return (
         <>
@@ -377,6 +376,16 @@ function AccountRowContent({
                             <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[10px] font-bold shadow-sm border border-blue-200/50 dark:border-blue-800/50">
                                 {t('accounts.current').toUpperCase()}
                             </span>
+                        )}
+                        {!isCurrent && onSetCurrent && !isDisabled && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onSetCurrent(); }}
+                                className="px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-base-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 text-[10px] font-medium shadow-sm border border-gray-200 dark:border-base-300 transition-all flex items-center gap-1 group/setcurr cursor-pointer"
+                                title={t('accounts.set_as_current', '设为当前账号 (不启动应用)')}
+                            >
+                                <UserCheck className="w-2.5 h-2.5 opacity-60 group-hover/setcurr:opacity-100 text-blue-500" />
+                                <span>{t('accounts.set_current', '设为当前')}</span>
+                            </button>
                         )}
                         {isDisabled && (
                             <span
@@ -581,10 +590,19 @@ function AccountRowContent({
                             <Tag className="w-3.5 h-3.5" />
                         </button>
                     )}
+                    {!isCurrent && onSetCurrent && !isDisabled && (
+                        <button
+                            className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"
+                            onClick={(e) => { e.stopPropagation(); onSetCurrent(); }}
+                            title={t('accounts.set_as_current', '设为当前账号 (不启动应用)')}
+                        >
+                            <UserCheck className="w-3.5 h-3.5 text-blue-500" />
+                        </button>
+                    )}
                     <button
                         className={`p-1.5 text-gray-500 dark:text-gray-400 rounded-lg transition-all ${(isSwitching || isDisabled) ? 'bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 cursor-not-allowed' : 'hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30'}`}
                         onClick={(e) => { e.stopPropagation(); onSwitch(); }}
-                        title={isDisabled ? t('accounts.disabled_tooltip') : (isSwitching ? t('common.loading') : t('accounts.switch_to_classic', '切换到 Antigravity (经典版)'))}
+                        title={isDisabled ? t('accounts.disabled_tooltip') : (isSwitching ? t('common.loading') : t('accounts.switch_to_classic', '启动 Antigravity 实例 (Client)'))}
                         disabled={isSwitching || isDisabled}
                     >
                         <ArrowRightLeft className={`w-3.5 h-3.5 ${isSwitching ? 'animate-spin' : ''}`} />
@@ -676,6 +694,7 @@ function AccountTable({
     currentAccountId,
     switchingAccountId,
     onSwitch,
+    onSetCurrent,
     onRefresh,
     onViewDevice,
     onViewDetails,
@@ -690,7 +709,6 @@ function AccountTable({
     const { t } = useTranslation();
 
     const [activeId, setActiveId] = useState<string | null>(null);
-    // showAllQuotas 已经在 useConfigStore 中解构获取
 
     // 配置拖拽传感器
     const sensors = useSensors(
@@ -718,7 +736,8 @@ function AccountTable({
             const newIndex = accountIds.indexOf(over.id as string);
 
             if (oldIndex !== -1 && newIndex !== -1 && onReorder) {
-                onReorder(arrayMove(accountIds, oldIndex, newIndex));
+                const newAccounts = arrayMove(accounts, oldIndex, newIndex);
+                onReorder(newAccounts.map(a => a.id));
             }
         }
     };
@@ -733,106 +752,107 @@ function AccountTable({
     }
 
     return (
-        <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-        >
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead>
-                        <tr className="border-b border-gray-100 dark:border-base-200 bg-gray-50 dark:bg-base-200">
-                            <th className="pl-2 py-2 text-left w-8">
-                                <span className="sr-only">{t('accounts.drag_to_reorder')}</span>
-                            </th>
-                            <th className="px-2 py-2 text-left w-10">
-                                <input
-                                    type="checkbox"
-                                    className="checkbox checkbox-sm rounded border-2 border-gray-400 dark:border-gray-500 checked:border-blue-600 checked:bg-blue-600 [--chkbg:theme(colors.blue.600)] [--chkfg:white]"
-                                    checked={accounts.length > 0 && selectedIds.size === accounts.length}
-                                    onChange={onToggleAll}
-                                />
-                            </th>
-                            <th className="px-2 py-1 text-left rtl:text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[300px] whitespace-nowrap">{t('accounts.table.email')}</th>
-                            <th className="px-2 py-1 text-left rtl:text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[340px] whitespace-nowrap">
-                                {t('accounts.table.quota')}
-                            </th>
-                            <th className="px-2 py-1 text-left rtl:text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[90px] whitespace-nowrap">{t('accounts.table.last_used')}</th>
-                            <th className="px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap sticky right-0 w-[220px] bg-gray-50 dark:bg-base-200 z-20 shadow-[-12px_0_12px_-12px_rgba(0,0,0,0.1)] dark:shadow-[-12px_0_12px_-12px_rgba(255,255,255,0.05)] text-center">{t('accounts.table.actions')}</th>
-                        </tr >
-                    </thead >
-                    <SortableContext items={accountIds} strategy={verticalListSortingStrategy}>
-                        <tbody className="divide-y divide-gray-100 dark:divide-base-200">
-                            {accounts.map((account) => (
-                                <SortableAccountRow
-                                    key={account.id}
-                                    account={account}
-                                    selected={selectedIds.has(account.id)}
-                                    isRefreshing={refreshingIds.has(account.id)}
-                                    isCurrent={account.id === currentAccountId}
-                                    isSwitching={account.id === switchingAccountId}
-                                    isDragging={account.id === activeId}
-                                    onSelect={() => onToggleSelect(account.id)}
-                                    onSwitch={(targetIde?: string) => onSwitch(account.id, targetIde)}
-                                    onRefresh={() => onRefresh(account.id)}
-                                    onViewDevice={() => onViewDevice(account.id)}
-                                    onViewDetails={() => onViewDetails(account.id)}
-                                    onExport={() => onExport(account.id)}
-                                    onDelete={() => onDelete(account.id)}
-                                    onToggleProxy={() => onToggleProxy(account.id)}
-                                    onWarmup={onWarmup ? () => onWarmup(account.id) : undefined}
-                                    onUpdateLabel={onUpdateLabel ? (label: string) => onUpdateLabel(account.id, label) : undefined}
-                                    onViewError={() => onViewError(account.id)}
-                                />
-                            ))}
-                        </tbody>
-                    </SortableContext>
-                </table >
-            </div >
-
-            {/* 拖拽悬浮预览层 */}
-            <DragOverlay>
-                {
-                    activeAccount ? (
-                        <table className="w-full bg-white dark:bg-base-100 shadow-2xl rounded-lg border border-blue-200 dark:border-blue-800">
-                            <tbody>
-                                <tr className="bg-blue-50 dark:bg-blue-900/30">
-                                    <td className="pl-2 py-1 w-8">
-                                        <div className="flex items-center justify-center w-6 h-6 text-blue-500">
-                                            <GripVertical className="w-4 h-4" />
-                                        </div>
-                                    </td>
-                                    <td className="px-2 py-1 w-10">
-                                        <input
-                                            type="checkbox"
-                                            className="checkbox checkbox-xs rounded border-2"
-                                            checked={selectedIds.has(activeAccount.id)}
-                                            readOnly
-                                        />
-                                    </td>
-                                    <AccountRowContent
-                                        account={activeAccount}
-                                        isCurrent={activeAccount.id === currentAccountId}
-                                        isRefreshing={refreshingIds.has(activeAccount.id)}
-                                        isSwitching={activeAccount.id === switchingAccountId}
-                                        onSwitch={() => { }}
-                                        onRefresh={() => { }}
-                                        onViewDevice={() => { }}
-                                        onViewDetails={() => { }}
-                                        onExport={() => { }}
-                                        onDelete={() => { }}
-                                        onToggleProxy={() => { }}
-                                        isDisabled={Boolean(activeAccount.disabled)}
-                                        onViewError={() => { }}
+        <div className="w-full h-full flex flex-col">
+            <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+            >
+                <div className="w-full flex-1 overflow-x-auto">
+                    <table className="w-full border-collapse">
+                        <thead>
+                            <tr className="border-b border-gray-100 dark:border-base-200 bg-gray-50/50 dark:bg-base-200/50">
+                                <th className="pl-2 py-1 w-8"></th>
+                                <th className="px-2 py-1 w-10 text-left align-middle">
+                                    <input
+                                        type="checkbox"
+                                        className="checkbox checkbox-xs rounded border-2 border-gray-400 dark:border-gray-500 checked:border-blue-600 checked:bg-blue-600 [--chkbg:theme(colors.blue.600)] [--chkfg:white]"
+                                        checked={accounts.length > 0 && accounts.every(a => selectedIds.has(a.id))}
+                                        onChange={onToggleAll}
                                     />
-                                </tr>
+                                </th>
+                                <th className="px-2 py-1 text-left rtl:text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[300px] whitespace-nowrap">{t('accounts.table.email')}</th>
+                                <th className="px-2 py-1 text-left rtl:text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[340px] whitespace-nowrap">
+                                    {t('accounts.table.quota')}
+                                </th>
+                                <th className="px-2 py-1 text-left rtl:text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[90px] whitespace-nowrap">{t('accounts.table.last_used')}</th>
+                                <th className="px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap sticky right-0 w-[220px] bg-gray-50 dark:bg-base-200 z-20 shadow-[-12px_0_12px_-12px_rgba(0,0,0,0.1)] dark:shadow-[-12px_0_12px_-12px_rgba(255,255,255,0.05)] text-center">{t('accounts.table.actions')}</th>
+                            </tr>
+                        </thead>
+                        <SortableContext items={accountIds} strategy={verticalListSortingStrategy}>
+                            <tbody className="divide-y divide-gray-100 dark:divide-base-200">
+                                {accounts.map((account) => (
+                                    <SortableAccountRow
+                                        key={account.id}
+                                        account={account}
+                                        selected={selectedIds.has(account.id)}
+                                        isRefreshing={refreshingIds.has(account.id)}
+                                        isCurrent={account.id === currentAccountId}
+                                        isSwitching={account.id === switchingAccountId}
+                                        isDragging={account.id === activeId}
+                                        onSelect={() => onToggleSelect(account.id)}
+                                        onSwitch={(targetIde?: string) => onSwitch(account.id, targetIde)}
+                                        onSetCurrent={onSetCurrent ? () => onSetCurrent(account.id) : undefined}
+                                        onRefresh={() => onRefresh(account.id)}
+                                        onViewDevice={() => onViewDevice(account.id)}
+                                        onViewDetails={() => onViewDetails(account.id)}
+                                        onExport={() => onExport(account.id)}
+                                        onDelete={() => onDelete(account.id)}
+                                        onToggleProxy={() => onToggleProxy(account.id)}
+                                        onWarmup={onWarmup ? () => onWarmup(account.id) : undefined}
+                                        onUpdateLabel={onUpdateLabel ? (label: string) => onUpdateLabel(account.id, label) : undefined}
+                                        onViewError={() => onViewError(account.id)}
+                                    />
+                                ))}
                             </tbody>
-                        </table>
-                    ) : null
-                }
-            </DragOverlay>
-        </DndContext>
+                        </SortableContext>
+                    </table>
+                </div>
+
+                {/* 拖拽悬浮预览层 */}
+                <DragOverlay>
+                    {
+                        activeAccount ? (
+                            <table className="w-full bg-white dark:bg-base-100 shadow-2xl rounded-lg border border-blue-200 dark:border-blue-800">
+                                <tbody>
+                                    <tr className="bg-blue-50 dark:bg-blue-900/30">
+                                        <td className="pl-2 py-1 w-8">
+                                            <div className="flex items-center justify-center w-6 h-6 text-blue-500">
+                                                <GripVertical className="w-4 h-4" />
+                                            </div>
+                                        </td>
+                                        <td className="px-2 py-1 w-10">
+                                            <input
+                                                type="checkbox"
+                                                className="checkbox checkbox-xs rounded border-2"
+                                                checked={selectedIds.has(activeAccount.id)}
+                                                readOnly
+                                            />
+                                        </td>
+                                        <AccountRowContent
+                                            account={activeAccount}
+                                            isCurrent={activeAccount.id === currentAccountId}
+                                            isRefreshing={refreshingIds.has(activeAccount.id)}
+                                            isSwitching={activeAccount.id === switchingAccountId}
+                                            onSwitch={() => { }}
+                                            onRefresh={() => { }}
+                                            onViewDevice={() => { }}
+                                            onViewDetails={() => { }}
+                                            onExport={() => { }}
+                                            onDelete={() => { }}
+                                            onToggleProxy={() => { }}
+                                            isDisabled={Boolean(activeAccount.disabled)}
+                                            onViewError={() => { }}
+                                        />
+                                    </tr>
+                                </tbody>
+                            </table>
+                        ) : null
+                    }
+                </DragOverlay>
+            </DndContext>
+        </div>
     );
 }
 

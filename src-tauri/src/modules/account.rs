@@ -1111,6 +1111,130 @@ pub async fn switch_account(
     Ok(())
 }
 
+/// Set current active account without starting any application
+pub async fn set_current_account_only(account_id: &str) -> Result<(), String> {
+    use crate::modules::oauth;
+
+    let index = {
+        let _lock = ACCOUNT_INDEX_LOCK
+            .lock()
+            .map_err(|e| format!("failed_to_acquire_lock: {}", e))?;
+        load_account_index()?
+    };
+
+    if !index.accounts.iter().any(|s| s.id == account_id) {
+        return Err(format!("Account not found: {}", account_id));
+    }
+
+    let mut account = load_account(account_id)?;
+    crate::modules::logger::log_info(&format!(
+        "Setting current active account: {} (ID: {})",
+        account.email, account.id
+    ));
+
+    let fresh_token = match oauth::ensure_fresh_token(&account.token, Some(&account.id)).await {
+        Ok(token) => token,
+        Err(e) => {
+            if is_account_access_blocked_message(&e) {
+                mark_validation_blocked(&mut account, &e);
+            }
+            return Err(format_switch_refresh_error(&e));
+        }
+    };
+
+    if fresh_token.access_token != account.token.access_token {
+        account.token = fresh_token.clone();
+        save_account(&account)?;
+    }
+
+    ensure_enterprise_project_ready(&mut account).await?;
+
+    if account.device_profile.is_none() {
+        let new_profile = modules::device::generate_profile();
+        apply_profile_to_account(
+            &mut account,
+            new_profile.clone(),
+            Some("auto_generated".to_string()),
+            true,
+        )?;
+    }
+
+    // Write to system default keyring and default storage.json (NO process launch)
+    let _ = crate::modules::integration::write_to_system_keyring(&account);
+    if let Ok(storage_path) = modules::device::get_storage_path(None) {
+        if let Some(ref profile) = account.device_profile {
+            let _ = modules::device::write_profile(&storage_path, profile);
+        }
+    }
+
+    // Update current active account ID
+    set_current_account_id_with_target(account_id, None)?;
+
+    account.update_last_used();
+    save_account(&account)?;
+
+    crate::modules::logger::log_info(&format!(
+        "Successfully set current account to: {}",
+        account.email
+    ));
+
+    Ok(())
+}
+
+/// Launch account multi-instance without modifying current active account
+pub async fn launch_account_instance(
+    account_id: &str,
+    target_ide: Option<&str>,
+) -> Result<(), String> {
+    use crate::modules::oauth;
+
+    let mut account = load_account(account_id)?;
+    crate::modules::logger::log_info(&format!(
+        "Launching multi-instance for account: {} (ID: {}, target_ide: {:?})",
+        account.email, account.id, target_ide
+    ));
+
+    let fresh_token = match oauth::ensure_fresh_token(&account.token, Some(&account.id)).await {
+        Ok(token) => token,
+        Err(e) => {
+            if is_account_access_blocked_message(&e) {
+                mark_validation_blocked(&mut account, &e);
+            }
+            return Err(format_switch_refresh_error(&e));
+        }
+    };
+
+    if fresh_token.access_token != account.token.access_token {
+        account.token = fresh_token.clone();
+        save_account(&account)?;
+    }
+
+    ensure_enterprise_project_ready(&mut account).await?;
+
+    if account.device_profile.is_none() {
+        let new_profile = modules::device::generate_profile();
+        apply_profile_to_account(
+            &mut account,
+            new_profile.clone(),
+            Some("auto_generated".to_string()),
+            true,
+        )?;
+    }
+
+    // Launch multi-instance (Without changing global current_account_id)
+    modules::account_instance::launch_account_multi_instance(&account, target_ide)?;
+
+    account.update_last_used();
+    save_account(&account)?;
+
+    crate::modules::logger::log_info(&format!(
+        "Multi-instance launched successfully for: {}",
+        account.email
+    ));
+
+    Ok(())
+}
+
 fn is_enterprise_client(client_key: Option<&str>) -> bool {
     client_key
         .map(str::trim)

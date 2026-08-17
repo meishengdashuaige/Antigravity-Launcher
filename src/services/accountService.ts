@@ -40,6 +40,14 @@ export async function switchAccount(accountId: string, targetIde?: string): Prom
     return await invoke('switch_account', { accountId, targetIde });
 }
 
+export async function setCurrentAccount(accountId: string): Promise<void> {
+    return await invoke('set_current_account', { accountId });
+}
+
+export async function launchAccountInstance(accountId: string, targetIde?: string): Promise<void> {
+    return await invoke('launch_account_instance', { accountId, targetIde });
+}
+
 export async function fetchAccountQuota(accountId: string): Promise<QuotaData> {
     return await invoke('fetch_account_quota', { accountId });
 }

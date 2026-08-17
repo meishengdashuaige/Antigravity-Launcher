@@ -787,15 +787,17 @@ fn inject_proxy_environment(
     }
 }
 
-/// Start Antigravity with optional explicit proxy configuration
+/// Start Antigravity with optional explicit proxy configuration and optional isolated user data directory
 #[allow(unused_mut)]
-pub fn start_antigravity_with_proxy(
+pub fn start_antigravity_with_instance(
     target_ide: Option<&str>,
+    user_data_dir: Option<&std::path::Path>,
     proxy_config: Option<&crate::models::config::ProxyLauncherConfig>,
 ) -> Result<(), String> {
     crate::modules::logger::log_info(&format!(
-        "Starting Antigravity ({:?}, proxy_enabled: {:?})...",
+        "Starting Antigravity ({:?}, user_data_dir: {:?}, proxy_enabled: {:?})...",
         target_ide,
+        user_data_dir.map(|p| p.to_string_lossy()),
         proxy_config.map(|p| p.enabled)
     ));
 
@@ -843,6 +845,10 @@ pub fn start_antigravity_with_proxy(
                 if inner_exe.exists() {
                     let mut cmd = Command::new(&inner_exe);
                     inject_proxy_environment(&mut cmd, proxy_config);
+                    if let Some(dir) = user_data_dir {
+                        cmd.arg("--user-data-dir").arg(dir.to_string_lossy().to_string());
+                        cmd.arg("--reuse-window");
+                    }
                     if let Some(ref args) = args {
                         for arg in args {
                             cmd.arg(arg);
@@ -851,10 +857,19 @@ pub fn start_antigravity_with_proxy(
                     cmd.spawn().map_err(|e| format!("Startup failed (inner binary): {}", e))?;
                 } else if path_str.ends_with(".app") || path.is_dir() {
                     let mut cmd = Command::new("open");
+                    if user_data_dir.is_some() {
+                        cmd.arg("-n");
+                    }
                     cmd.arg("-a").arg(&path_str);
                     inject_proxy_environment(&mut cmd, proxy_config);
 
-                    // Add startup arguments
+                    if user_data_dir.is_some() || args.is_some() {
+                        cmd.arg("--args");
+                    }
+                    if let Some(dir) = user_data_dir {
+                        cmd.arg("--user-data-dir").arg(dir.to_string_lossy().to_string());
+                        cmd.arg("--reuse-window");
+                    }
                     if let Some(ref args) = args {
                         for arg in args {
                             cmd.arg(arg);
@@ -866,8 +881,10 @@ pub fn start_antigravity_with_proxy(
                 } else {
                     let mut cmd = Command::new(&path_str);
                     inject_proxy_environment(&mut cmd, proxy_config);
-
-                    // Add startup arguments
+                    if let Some(dir) = user_data_dir {
+                        cmd.arg("--user-data-dir").arg(dir.to_string_lossy().to_string());
+                        cmd.arg("--reuse-window");
+                    }
                     if let Some(ref args) = args {
                         for arg in args {
                             cmd.arg(arg);
@@ -883,8 +900,10 @@ pub fn start_antigravity_with_proxy(
             {
                 let mut cmd = Command::new(&path_str);
                 inject_proxy_environment(&mut cmd, proxy_config);
-
-                // Add startup arguments
+                if let Some(dir) = user_data_dir {
+                    cmd.arg("--user-data-dir").arg(dir.to_string_lossy().to_string());
+                    cmd.arg("--reuse-window");
+                }
                 if let Some(ref args) = args {
                     for arg in args {
                         cmd.arg(arg);
@@ -921,6 +940,10 @@ pub fn start_antigravity_with_proxy(
         if inner_candidate.exists() {
             let mut cmd = Command::new(&inner_candidate);
             inject_proxy_environment(&mut cmd, proxy_config);
+            if let Some(dir) = user_data_dir {
+                cmd.arg("--user-data-dir").arg(dir.to_string_lossy().to_string());
+                cmd.arg("--reuse-window");
+            }
             if let Some(ref args) = args {
                 for arg in args {
                     cmd.arg(arg);
@@ -929,10 +952,19 @@ pub fn start_antigravity_with_proxy(
             cmd.spawn().map_err(|e| format!("Startup failed (inner MacOS): {}", e))?;
         } else {
             let mut cmd = Command::new("open");
+            if user_data_dir.is_some() {
+                cmd.arg("-n");
+            }
             cmd.args(["-a", app_name]);
             inject_proxy_environment(&mut cmd, proxy_config);
 
-            // Add startup arguments
+            if user_data_dir.is_some() || args.is_some() {
+                cmd.arg("--args");
+            }
+            if let Some(dir) = user_data_dir {
+                cmd.arg("--user-data-dir").arg(dir.to_string_lossy().to_string());
+                cmd.arg("--reuse-window");
+            }
             if let Some(ref args) = args {
                 for arg in args {
                     cmd.arg(arg);
@@ -969,6 +1001,10 @@ pub fn start_antigravity_with_proxy(
 
             let mut cmd = Command::new(&detected_path);
             inject_proxy_environment(&mut cmd, proxy_config);
+            if let Some(dir) = user_data_dir {
+                cmd.arg("--user-data-dir").arg(dir.to_string_lossy().to_string());
+                cmd.arg("--reuse-window");
+            }
 
             // Add startup arguments
             if let Some(ref args) = args {
@@ -985,14 +1021,23 @@ pub fn start_antigravity_with_proxy(
             })?;
 
             crate::modules::logger::log_info(&format!(
-                "Antigravity startup command sent (detected path: {:?})",
-                detected_path
+                "Antigravity startup command sent (detected path: {:?}, instance: {:?})",
+                detected_path,
+                user_data_dir.map(|p| p.to_string_lossy())
             ));
             Ok(())
         } else {
             Err("Unable to start Antigravity: executable not found".to_string())
         }
     }
+}
+
+/// Start Antigravity with optional explicit proxy configuration
+pub fn start_antigravity_with_proxy(
+    target_ide: Option<&str>,
+    proxy_config: Option<&crate::models::config::ProxyLauncherConfig>,
+) -> Result<(), String> {
+    start_antigravity_with_instance(target_ide, None, proxy_config)
 }
 
 /// Start Antigravity (using default config)

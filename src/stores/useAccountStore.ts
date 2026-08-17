@@ -15,6 +15,8 @@ interface AccountState {
     deleteAccount: (accountId: string) => Promise<void>;
     deleteAccounts: (accountIds: string[]) => Promise<void>;
     switchAccount: (accountId: string, targetIde?: string) => Promise<void>;
+    setCurrentAccount: (accountId: string) => Promise<void>;
+    launchAccountInstance: (accountId: string, targetIde?: string) => Promise<void>;
     refreshQuota: (accountId: string) => Promise<void>;
     refreshAllQuotas: () => Promise<accountService.RefreshStats>;
     reorderAccounts: (accountIds: string[]) => Promise<void>;
@@ -111,6 +113,27 @@ export const useAccountStore = create<AccountState>((set, get) => ({
             set({ loading: false });
         } catch (error) {
             set({ error: String(error), loading: false });
+            throw error;
+        }
+    },
+
+    setCurrentAccount: async (accountId: string) => {
+        set({ loading: true, error: null });
+        try {
+            await accountService.setCurrentAccount(accountId);
+            await get().fetchCurrentAccount();
+            set({ loading: false });
+        } catch (error) {
+            set({ error: String(error), loading: false });
+            throw error;
+        }
+    },
+
+    launchAccountInstance: async (accountId: string, targetIde?: string) => {
+        try {
+            await accountService.launchAccountInstance(accountId, targetIde);
+        } catch (error) {
+            set({ error: String(error) });
             throw error;
         }
     },

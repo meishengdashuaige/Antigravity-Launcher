@@ -44,8 +44,8 @@ function Accounts() {
     addAccount,
     deleteAccount,
     deleteAccounts,
-    switchAccount,
-    loading,
+    setCurrentAccount,
+    launchAccountInstance,
     refreshQuota,
     toggleProxyStatus,
     reorderAccounts,
@@ -327,22 +327,31 @@ function Accounts() {
     null,
   );
 
-  const handleSwitch = async (accountId: string, targetIde?: string) => {
-    if (loading || switchingAccountId) return;
+  const handleLaunchInstance = async (accountId: string, targetIde?: string) => {
+    if (switchingAccountId) return;
 
     setSwitchingAccountId(accountId);
-    console.log("[Accounts] handleSwitch called for:", accountId, "targetIde:", targetIde);
+    console.log("[Accounts] handleLaunchInstance called for:", accountId, "targetIde:", targetIde);
     try {
-      await switchAccount(accountId, targetIde);
+      await launchAccountInstance(accountId, targetIde);
       showToast(t("common.success"), "success");
     } catch (error) {
-      console.error("[Accounts] Switch failed:", error);
+      console.error("[Accounts] Launch instance failed:", error);
       showToast(`${t("common.error")}: ${error}`, "error");
     } finally {
-      // Add a small delay for smoother UX
       setTimeout(() => {
         setSwitchingAccountId(null);
       }, 500);
+    }
+  };
+
+  const handleSetCurrent = async (accountId: string) => {
+    try {
+      await setCurrentAccount(accountId);
+      showToast(t("accounts.set_current_success", "已成功设为当前账号"), "success");
+    } catch (error) {
+      console.error("[Accounts] Set current account failed:", error);
+      showToast(`${t("common.error")}: ${error}`, "error");
     }
   };
 
@@ -1061,7 +1070,8 @@ function Accounts() {
                 onToggleAll={handleToggleAll}
                 currentAccountId={currentAccount?.id || null}
                 switchingAccountId={switchingAccountId}
-                onSwitch={handleSwitch}
+                onSwitch={handleLaunchInstance}
+                onSetCurrent={handleSetCurrent}
                 onRefresh={handleRefresh}
                 onViewDevice={handleViewDevice}
                 onViewDetails={handleViewDetails}
@@ -1089,7 +1099,8 @@ function Accounts() {
               onToggleSelect={handleToggleSelect}
               currentAccountId={currentAccount?.id || null}
               switchingAccountId={switchingAccountId}
-              onSwitch={handleSwitch}
+              onSwitch={handleLaunchInstance}
+              onSetCurrent={handleSetCurrent}
               onRefresh={handleRefresh}
               onViewDevice={handleViewDevice}
               onViewDetails={handleViewDetails}

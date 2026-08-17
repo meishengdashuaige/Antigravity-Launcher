@@ -146,7 +146,7 @@ pub async fn reorder_accounts(
     Ok(())
 }
 
-/// 切换账号
+/// 切换账号（向后兼容）
 #[tauri::command]
 pub async fn switch_account(
     app: tauri::AppHandle,
@@ -169,6 +169,33 @@ pub async fn switch_account(
     let _ = crate::commands::proxy::reload_proxy_accounts(proxy_state).await;
 
     Ok(())
+}
+
+/// 设为当前账号（仅切换当前账号状态与默认凭据，不拉起应用程序）
+#[tauri::command]
+pub async fn set_current_account(
+    app: tauri::AppHandle,
+    proxy_state: tauri::State<'_, crate::commands::proxy::ProxyServiceState>,
+    account_id: String,
+) -> Result<(), String> {
+    modules::account::set_current_account_only(&account_id).await?;
+
+    // 同步托盘
+    crate::modules::tray::update_tray_menus(&app);
+
+    // 重新加载代理账号池
+    let _ = crate::commands::proxy::reload_proxy_accounts(proxy_state).await;
+
+    Ok(())
+}
+
+/// 多开启动指定账号实例（不改变当前账号状态）
+#[tauri::command]
+pub async fn launch_account_instance(
+    account_id: String,
+    target_ide: Option<String>,
+) -> Result<(), String> {
+    modules::account::launch_account_instance(&account_id, target_ide.as_deref()).await
 }
 
 /// 获取当前账号
