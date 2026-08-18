@@ -67,10 +67,17 @@ jobs:
           Write-Host "No updater signing key configured; disabled updater artifacts for this build."
 
       - name: Build the app
+        shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri build -- ${{ matrix.args }}
+        run: |
+          $matrixArgs = "${{ matrix.args }}"
+          if (-not [string]::IsNullOrWhiteSpace($matrixArgs)) {
+            Invoke-Expression "npm run tauri build -- $matrixArgs"
+          } else {
+            npm run tauri build
+          }
 
       # 处理 macOS 架构重命名冲突 (解决 422 Already Exists)
       - name: Rename macOS assets for architecture
