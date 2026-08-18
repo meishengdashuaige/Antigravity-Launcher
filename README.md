@@ -40,14 +40,19 @@
   * **Antigravity IDE**
   * **Antigravity CLI**
 
-### 2. 🔗 原生图标桌面快捷方式 (Silent Shortcut)
+### 2. 👥 客户端独立多实例多开 (Multi-Instance Isolation)
+* **核心原理**：参考并融合了 [cockpit-tools](https://github.com/jlcodes99/cockpit-tools) 的多开隔离思想，基于专属 `--user-data-dir` 独立环境与 Token/State 自动写入，支持同时运行多个不同账号的 Antigravity 窗口。
+* **独立不干扰**：多开实例之间数据完全隔离，多开启动不修改系统当前账号（`current_account_id`）与全局 Keyring 密钥。
+* **灵活调度**：账号管理页直接点击即可为任意账号拉起 Client、IDE 或 CLI 独立实例；首页及列表页亦支持纯粹的“设为当前账号”操作（只切换不拉起程序）。
+
+### 3. 🔗 原生图标桌面快捷方式 (Silent Shortcut)
 * **一键创建快捷方式**：在仪表盘或高级设置中点击即可一键在桌面生成无黑窗闪烁的静默快捷方式。
 * **原生图标与路径**：自动读取 Antigravity 原生图标，双击直接通过免 TUN 代理静默唤起。
 
-### 3. 🖥️ 系统托盘快速启动
+### 4. 🖥️ 系统托盘快速启动
 * **托盘快捷菜单**：右键系统托盘图标，即可一键快捷启动 `Antigravity`、`Antigravity IDE`、`Antigravity CLI`。
 
-### 4. ⚙️ 高级代理与脚本配置中心
+### 5. ⚙️ 高级代理与脚本配置中心
 * **预设端口快捷选择**：内置 Clash (`7897`, `7890`)、v2ray (`10809`)、Sing-box (`2080`)、Shadowsocks (`1080`) 常用端口。
 * **连通性测试**：内置底层 TCP 快速握手测试，实时检测代理可用性与延迟。
 * **多端脚本导出**：支持导出 Windows VBS（静默无黑窗）、Windows Batch (`.cmd`)、PowerShell (`.ps1`)、macOS / Linux (`.sh`) 启动脚本。
@@ -108,6 +113,7 @@ npm run tauri build
 ## 🙏 致谢与开源协议 (Attribution & License)
 
 * **原项目致谢**：本项目基于优秀的开源项目 [lbjlaq/Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager) 进行二次开发，感谢原作者及所有贡献者的付出！
+* **多开实现参考**：客户端多实例多开隔离功能参考了 [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) 项目的多开设计思想，感谢作者的开源分享！
 * **免 TUN 原理参考**：感谢 LINUX DO 社区分享的 [Antigravity 免 TUN 代理启动原理](https://linux.do/t/topic/2580678)。
 * **开源协议**：本项目沿用原项目的 **[CC BY-NC-SA 4.0 (署名-非商业性使用-相同方式共享 4.0 国际)](LICENSE)** 协议开源。
 

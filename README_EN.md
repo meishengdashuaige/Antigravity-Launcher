@@ -38,10 +38,15 @@ This project is a customized edition based on [Antigravity-Manager](https://gith
   * **Antigravity IDE**
   * **Antigravity CLI**
 
-### 2. 🔗 Native Desktop Shortcut Creation
+### 2. 👥 Multi-Instance Client Isolation
+* **Architecture**: Inspired by [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools), uses isolated `--user-data-dir` sessions with dedicated credentials/state injection, allowing concurrent Antigravity instances across different accounts.
+* **No Global Pollution**: Starting multi-instance windows does not alter the system-wide active account (`current_account_id`) or global keyring.
+* **Flexible Dispatch**: Launch dedicated Client, IDE, or CLI instances directly from the account management page, with support for setting the active account without launching apps.
+
+### 3. 🔗 Native Desktop Shortcut Creation
 * One-click creation of silent, popup-free Windows shortcuts with native application icons.
 
-### 3. 🖥️ System Tray Quick Actions
+### 4. 🖥️ System Tray Quick Actions
 * Launch `Antigravity`, `Antigravity IDE`, or `Antigravity CLI` directly from the system tray menu.
 
 ---
@@ -69,5 +74,6 @@ npm run tauri dev
 ## 🙏 Attribution & License
 
 * **Original Project**: Based on [lbjlaq/Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager).
+* **Multi-Instance Inspiration**: Special thanks to [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) for the multi-instance design and isolation concept.
 * **Reference**: Thanks to the LINUX DO community for the [TUN-Free Proxy Startup Principle](https://linux.do/t/topic/2580678).
 * **License**: Licensed under [CC BY-NC-SA 4.0](LICENSE).
