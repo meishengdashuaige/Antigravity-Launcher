@@ -14,17 +14,20 @@ jobs:
       matrix:
         include:
           - platform: "macos-latest"
+            target: "aarch64-apple-darwin"
             args: "--target aarch64-apple-darwin"
           - platform: "macos-latest"
+            target: "x86_64-apple-darwin"
             args: "--target x86_64-apple-darwin"
-          - platform: "macos-latest"
-            args: "--target universal-apple-darwin --bundles app"
           - platform: "ubuntu-22.04"
+            target: ""
             args: ""
           - platform: "windows-latest"
+            target: ""
             args: ""
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -33,13 +36,21 @@ jobs:
         if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf pkg-config libsoup-3.0-dev javascriptcoregtk-4.1 libjavascriptcoregtk-4.1-dev
-          sudo apt-get install -y libnm-dev xdg-utils
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev \
+            libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf \
+            pkg-config libsoup-3.0-dev javascriptcoregtk-4.1 libjavascriptcoregtk-4.1-dev \
+            libnm-dev xdg-utils cmake nasm perl squashfs-tools librsvg2-bin rpm
 
       - name: Rust setup
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || (contains(matrix.args, 'aarch64') && 'aarch64-unknown-linux-gnu' || '') }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || (matrix.target != '' && matrix.target || '') }}
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
 
       - name: Node.js setup
         uses: actions/setup-node@v4
@@ -50,61 +61,61 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Disable updater artifacts without signing key
-        shell: pwsh
+      - name: Prepare updater config without signing key
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if (-not [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
-            Write-Host "Updater signing key is configured; keeping updater artifacts enabled."
-            exit 0
-          }
-
-          $configPath = "src-tauri/tauri.conf.json"
-          $config = Get-Content -Raw $configPath | ConvertFrom-Json
-          $config.bundle.createUpdaterArtifacts = $false
-          if ($config.plugins -and $config.plugins.updater) {
-            $config.plugins.updater.active = $false
-          }
-          $config | ConvertTo-Json -Depth 32 | Set-Content -Path $configPath -Encoding UTF8
-          Write-Host "No updater signing key configured; disabled updater artifacts for this build."
+          node -e '
+            const fs = require("fs");
+            const configPath = "src-tauri/tauri.conf.json";
+            const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+            const key = process.env.TAURI_SIGNING_PRIVATE_KEY;
+            if (!key || key.trim() === "") {
+              console.log("No TAURI_SIGNING_PRIVATE_KEY configured; disabling updater artifacts.");
+              config.bundle = config.bundle || {};
+              config.bundle.createUpdaterArtifacts = false;
+              fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+            } else {
+              console.log("TAURI_SIGNING_PRIVATE_KEY configured; keeping updater artifacts.");
+            }
+          '
 
       - name: Build the app
-        shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
         run: |
-          $matrixArgs = "${{ matrix.args }}"
-          if (-not [string]::IsNullOrWhiteSpace($matrixArgs)) {
-            Invoke-Expression "npm run tauri build -- $matrixArgs"
-          } else {
-            npm run tauri build
-          }
+          if [ -n "${{ matrix.args }}" ]; then
+            npx tauri build ${{ matrix.args }}
+          else
+            npx tauri build
+          fi
 
-      # 处理 macOS 架构重命名冲突 (解决 422 Already Exists)
+      # 处理 macOS 架构重命名
       - name: Rename macOS assets for architecture
         if: matrix.platform == 'macos-latest'
+        shell: bash
         run: |
           if [[ "${{ matrix.args }}" == *"--target aarch64-apple-darwin"* ]]; then
             ARCH="aarch64"
           elif [[ "${{ matrix.args }}" == *"--target x86_64-apple-darwin"* ]]; then
             ARCH="x64"
-          elif [[ "${{ matrix.args }}" == *"--target universal-apple-darwin"* ]]; then
-            ARCH="universal"
           else
             ARCH="unknown"
           fi
           
           echo "Detected architecture: $ARCH"
           
-          cd src-tauri/target/*/release/bundle/macos/ 2>/dev/null || cd src-tauri/target/release/bundle/macos/ 2>/dev/null || true
-          
-          if [ -f "Antigravity Tools.app.tar.gz" ]; then
-            mv "Antigravity Tools.app.tar.gz" "Antigravity Tools_${ARCH}.app.tar.gz"
-            [ -f "Antigravity Tools.app.tar.gz.sig" ] && mv "Antigravity Tools.app.tar.gz.sig" "Antigravity Tools_${ARCH}.app.tar.gz.sig"
-            echo "Renamed assets to append Arch: $ARCH"
-          fi
+          for dir in src-tauri/target/*/release/bundle/macos src-tauri/target/release/bundle/macos; do
+            if [ -d "$dir" ]; then
+              if [ -f "$dir/Antigravity Tools.app.tar.gz" ]; then
+                mv "$dir/Antigravity Tools.app.tar.gz" "$dir/Antigravity Tools_${ARCH}.app.tar.gz"
+                [ -f "$dir/Antigravity Tools.app.tar.gz.sig" ] && mv "$dir/Antigravity Tools.app.tar.gz.sig" "$dir/Antigravity Tools_${ARCH}.app.tar.gz.sig"
+                echo "Renamed assets in $dir for Arch: $ARCH"
+              fi
+            fi
+          done
 
       # 上传 updater.json 到 Artifacts
       - name: Upload updater json
@@ -165,6 +176,33 @@ jobs:
             echo "Antigravity Tools ${{ github.ref_name }} Release" > release_notes.md
           fi
 
+      - name: Collect release files and verify
+        run: |
+          mkdir -p release-files
+          if [ -d all-artifacts ]; then
+            find all-artifacts -type f \( \
+              -name "*.dmg" -o \
+              -name "*.deb" -o \
+              -name "*.AppImage" -o \
+              -name "*.msi" -o \
+              -name "*.exe" -o \
+              -name "*.rpm" -o \
+              -name "*.app.tar.gz" -o \
+              -name "*.sig" \
+            \) -print0 | while IFS= read -r -d '' file; do
+              cp "$file" release-files/
+            done
+          fi
+
+          echo "Collected files for release:"
+          find release-files -maxdepth 1 -type f -print
+
+          BINARY_COUNT=$(find release-files -type f \( -name "*.dmg" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" -o -name "*.rpm" -o -name "*.app.tar.gz" \) | wc -l)
+          if [ "$BINARY_COUNT" -eq 0 ]; then
+            echo "::error::No installer binaries found! Please inspect the build-tauri jobs for errors."
+            exit 1
+          fi
+
       - name: Build updater.json from signatures
         env:
           VERSION: ${{ github.ref_name }}
@@ -190,61 +228,49 @@ jobs:
           LINUX_AMD64_SIG=$(read_sig "*_amd64.AppImage.sig")
           LINUX_AARCH64_SIG=$(read_sig "*_aarch64.AppImage.sig")
 
-          jq -n \
-            --arg version "$VER" \
-            --arg notes "See release page for details" \
-            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --arg dl "$DOWNLOAD_BASE" \
-            --arg mac_a64_sig "$MACOS_AARCH64_SIG" \
-            --arg mac_x64_sig "$MACOS_X64_SIG" \
-            --arg win_nsis_sig "$WINDOWS_NSIS_SIG" \
-            --arg linux_amd64_sig "$LINUX_AMD64_SIG" \
-            --arg linux_a64_sig "$LINUX_AARCH64_SIG" \
-            --arg ver "$VER" \
-            '{
-              version: $version,
-              notes: $notes,
-              pub_date: $pub_date,
-              platforms: {
-                "darwin-aarch64": {
-                  url: "\($dl)/Antigravity.Tools_aarch64.app.tar.gz",
-                  signature: $mac_a64_sig
-                },
-                "darwin-x86_64": {
-                  url: "\($dl)/Antigravity.Tools_x64.app.tar.gz",
-                  signature: $mac_x64_sig
-                },
-                "windows-x86_64": {
-                  url: "\($dl)/Antigravity.Tools_\($ver)_x64-setup.exe",
-                  signature: $win_nsis_sig
-                },
-                "linux-x86_64": {
-                  url: "\($dl)/Antigravity.Tools_\($ver)_amd64.AppImage",
-                  signature: $linux_amd64_sig
-                },
-                "linux-aarch64": {
-                  url: "\($dl)/Antigravity.Tools_\($ver)_aarch64.AppImage",
-                  signature: $linux_a64_sig
+          if [ -n "$MACOS_AARCH64_SIG" ] || [ -n "$MACOS_X64_SIG" ] || [ -n "$WINDOWS_NSIS_SIG" ] || [ -n "$LINUX_AMD64_SIG" ] || [ -n "$LINUX_AARCH64_SIG" ]; then
+            jq -n \
+              --arg version "$VER" \
+              --arg notes "See release page for details" \
+              --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --arg dl "$DOWNLOAD_BASE" \
+              --arg mac_a64_sig "$MACOS_AARCH64_SIG" \
+              --arg mac_x64_sig "$MACOS_X64_SIG" \
+              --arg win_nsis_sig "$WINDOWS_NSIS_SIG" \
+              --arg linux_amd64_sig "$LINUX_AMD64_SIG" \
+              --arg linux_a64_sig "$LINUX_AARCH64_SIG" \
+              --arg ver "$VER" \
+              '{
+                version: $version,
+                notes: $notes,
+                pub_date: $pub_date,
+                platforms: {
+                  "darwin-aarch64": {
+                    url: "\($dl)/Antigravity.Tools_aarch64.app.tar.gz",
+                    signature: $mac_a64_sig
+                  },
+                  "darwin-x86_64": {
+                    url: "\($dl)/Antigravity.Tools_x64.app.tar.gz",
+                    signature: $mac_x64_sig
+                  },
+                  "windows-x86_64": {
+                    url: "\($dl)/Antigravity.Tools_\($ver)_x64-setup.exe",
+                    signature: $win_nsis_sig
+                  },
+                  "linux-x86_64": {
+                    url: "\($dl)/Antigravity.Tools_\($ver)_amd64.AppImage",
+                    signature: $linux_amd64_sig
+                  },
+                  "linux-aarch64": {
+                    url: "\($dl)/Antigravity.Tools_\($ver)_aarch64.AppImage",
+                    signature: $linux_a64_sig
+                  }
                 }
-              }
-            }' > updater.json
-
-      - name: Collect release files
-        run: |
-          mkdir -p release-files
-          find all-artifacts -type f \( \
-            -name "*.dmg" -o \
-            -name "*.deb" -o \
-            -name "*.AppImage" -o \
-            -name "*.msi" -o \
-            -name "*.exe" -o \
-            -name "*.rpm" -o \
-            -name "*.app.tar.gz" -o \
-            -name "*.sig" \
-          \) -print0 | while IFS= read -r -d '' file; do
-            cp "$file" release-files/
-          done
-          find release-files -maxdepth 1 -type f -print
+              }' > release-files/updater.json
+            echo "updater.json created with signatures."
+          else
+            echo "No updater signatures found; skipping updater.json."
+          fi
 
       - name: Create or Update GitHub Release
         uses: ncipollo/release-action@v1
@@ -254,7 +280,7 @@ jobs:
           name: "Antigravity Tools ${{ github.ref_name }}"
           bodyFile: "release_notes.md"
           token: ${{ secrets.GITHUB_TOKEN }}
-          artifacts: "release-files/*,updater.json"
-          artifactErrorsFailBuild: false
+          artifacts: "release-files/*"
+          artifactErrorsFailBuild: true
           replacesArtifacts: true
           makeLatest: legacy
