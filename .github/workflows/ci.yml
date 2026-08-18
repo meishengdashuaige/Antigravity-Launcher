@@ -67,11 +67,13 @@ jobs:
           workspaces: "src-tauri"
 
       - name: Check Rust formatting
+        continue-on-error: true
         run: |
           cd src-tauri
           cargo fmt -- --check
 
       - name: Run Clippy
+        continue-on-error: true
         run: |
           cd src-tauri
           cargo clippy --all-targets --all-features

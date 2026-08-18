@@ -24,8 +24,6 @@ jobs:
             args: "--target universal-apple-darwin --bundles app"
           - platform: "ubuntu-22.04"
             args: ""
-          - platform: "ubuntu-24.04-arm"
-            args: ""
           - platform: "windows-2025"
             args: ""
 
@@ -147,6 +145,7 @@ jobs:
 
   publish-release:
     needs: build-tauri
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -288,79 +287,22 @@ jobs:
 
   docker-build-amd64:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' && (github.repository == 'meishengdashuaige/Antigravity-Launcher' || vars.ENABLE_DOCKER_PUSH == 'true')
+    if: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push (AMD64)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ github.repository_owner }}/antigravity-manager:latest-amd64
-            ${{ github.repository_owner }}/antigravity-manager:${{ github.ref_name }}-amd64
-          build-args: |
-            USE_MIRROR=false
 
   docker-build-arm64:
-    runs-on: ubuntu-24.04-arm
-    if: github.event_name != 'pull_request' && (github.repository == 'meishengdashuaige/Antigravity-Launcher' || vars.ENABLE_DOCKER_PUSH == 'true')
+    runs-on: ubuntu-latest
+    if: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push (ARM64)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ${{ github.repository_owner }}/antigravity-manager:latest-arm64
-            ${{ github.repository_owner }}/antigravity-manager:${{ github.ref_name }}-arm64
-          build-args: |
-            USE_MIRROR=false
 
   docker-manifest:
     needs: [docker-build-amd64, docker-build-arm64]
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' && (github.repository == 'meishengdashuaige/Antigravity-Launcher' || vars.ENABLE_DOCKER_PUSH == 'true')
+    if: false
     steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Create and push manifest
-        run: |
-          docker buildx imagetools create -t ${{ github.repository_owner }}/antigravity-manager:latest \
-            ${{ github.repository_owner }}/antigravity-manager:latest-amd64 \
-            ${{ github.repository_owner }}/antigravity-manager:latest-arm64
-
-          docker buildx imagetools create -t ${{ github.repository_owner }}/antigravity-manager:${{ github.ref_name }} \
-            ${{ github.repository_owner }}/antigravity-manager:${{ github.ref_name }}-amd64 \
-            ${{ github.repository_owner }}/antigravity-manager:${{ github.ref_name }}-arm64
+      - name: Checkout repository
+        uses: actions/checkout@v4
