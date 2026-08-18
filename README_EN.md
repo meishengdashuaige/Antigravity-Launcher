@@ -1,79 +1,62 @@
-# Antigravity Launcher & Manager
+# Antigravity Launcher
 
-> Professional AI Account Manager, Protocol Proxy & TUN-Free Proxy Launcher (v4.5.6)
-
-<div align="center">
-  <img src="public/icon.png" alt="Antigravity Logo" width="120" height="120" style="border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
-
-  <h3>Your Personal High-Performance AI Gateway & Launcher</h3>
-  <p>An all-in-one solution combining multi-account pooling, TUN-free process proxy injection, and AI protocol conversion.</p>
-  
-  <p>
-    <a href="https://github.com/meishengdashuaige/Antigravity-Launcher">
-      <img src="https://img.shields.io/badge/Version-4.5.6-blue?style=flat-square" alt="Version">
-    </a>
-    <img src="https://img.shields.io/badge/Tauri-v2-orange?style=flat-square" alt="Tauri">
-    <img src="https://img.shields.io/badge/Backend-Rust-red?style=flat-square" alt="Rust">
-    <img src="https://img.shields.io/badge/Frontend-React-61DAFB?style=flat-square" alt="React">
-    <img src="https://img.shields.io/badge/License-CC--BY--NC--SA--4.0-lightgrey?style=flat-square" alt="License">
-  </p>
-
-  <p>
-    <a href="./README.md">简体中文</a> | 
-    <strong>English</strong>
-  </p>
-</div>
+A fork based on [lbjlaq/Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager), mainly adding **TUN-Free Proxy Launching** and **Multi-Instance Client Isolation**.
 
 ---
 
-## 🌟 Fork Key Features
+## 🛠️ Fork Features
 
-This project is a customized edition based on [Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager), enhanced with **TUN-Free Proxy Launching & Process Control**:
+### 1. TUN-Free Proxy Launcher
+- Injects `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` environment variables directly upon starting Antigravity and its language server subprocesses.
+- Works with standard local proxy ports (Clash, v2ray, Sing-box, Shadowsocks) without enabling system TUN mode.
+- Supports launching `Antigravity (Client)`, `Antigravity IDE`, and `Antigravity CLI (agy)`.
 
-### 1. 🚀 TUN-Free Proxy Launcher
-* **Mechanism**: Injects `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` and their lowercase aliases directly into Antigravity and its language server subprocesses upon startup.
-* **No TUN Required**: Works seamlessly with local proxies like Clash, v2ray, Sing-box, or Shadowsocks without needing system TUN/virtual NIC mode.
-* **Multi-Target Support**:
-  * **Antigravity (Client)**
-  * **Antigravity IDE**
-  * **Antigravity CLI**
+### 2. Multi-Instance Client Isolation (Inspired by cockpit-tools)
+- References the multi-instance design from [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools), using isolated `--user-data-dir` directories with dedicated token/state injection.
+- Run multiple Antigravity windows with different accounts simultaneously without session conflicts.
+- Does not modify the system-wide active account (`current_account_id`) or global keyring.
 
-### 2. 👥 Multi-Instance Client Isolation
-* **Architecture**: Inspired by [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools), uses isolated `--user-data-dir` sessions with dedicated credentials/state injection, allowing concurrent Antigravity instances across different accounts.
-* **No Global Pollution**: Starting multi-instance windows does not alter the system-wide active account (`current_account_id`) or global keyring.
-* **Flexible Dispatch**: Launch dedicated Client, IDE, or CLI instances directly from the account management page, with support for setting the active account without launching apps.
+### 3. Decoupled Account Switching
+- "Set as Active" operation in the account management page only switches account credentials without launching applications.
+- Dashboard best account switching updates active state without auto-opening windows.
 
-### 3. 🔗 Native Desktop Shortcut Creation
-* One-click creation of silent, popup-free Windows shortcuts with native application icons.
-
-### 4. 🖥️ System Tray Quick Actions
-* Launch `Antigravity`, `Antigravity IDE`, or `Antigravity CLI` directly from the system tray menu.
+### 4. Silent Shortcuts & System Tray
+- Generate desktop shortcuts with native icons that launch silently via proxy without command prompt popups.
+- System tray quick launch menu.
 
 ---
 
-## 📦 Installation & Usage
+## 📖 Upstream Base Features
 
-### Pre-built Binaries
-Download the latest installers from the [Releases Page](https://github.com/meishengdashuaige/Antigravity-Launcher/releases).
+For original account quota tracking, OAuth adding, 403 error retry/rotation, and OpenAI / Anthropic / Gemini API proxy capabilities, please refer to the original repository:
+👉 [lbjlaq/Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
 
-### Local Development
+---
+
+## 📦 Local Development
+
+### Requirements
+- Node.js (>= 18)
+- Rust (>= 1.75)
+
+### Setup & Run
 ```bash
-# Clone the repository
 git clone https://github.com/meishengdashuaige/Antigravity-Launcher.git
 cd Antigravity-Launcher
-
-# Install dependencies
 npm install --legacy-peer-deps
-
-# Run development mode
 npm run tauri dev
+```
+
+### Build
+```bash
+npm run tauri build
 ```
 
 ---
 
 ## 🙏 Attribution & License
 
-* **Original Project**: Based on [lbjlaq/Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager).
-* **Multi-Instance Inspiration**: Special thanks to [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) for the multi-instance design and isolation concept.
-* **Reference**: Thanks to the LINUX DO community for the [TUN-Free Proxy Startup Principle](https://linux.do/t/topic/2580678).
-* **License**: Licensed under [CC BY-NC-SA 4.0](LICENSE).
+- **Upstream Project**: [lbjlaq/Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
+- **Multi-Instance Reference**: [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools)
+- **TUN-Free Reference**: [LINUX DO Community Discussion](https://linux.do/t/topic/2580678)
+- **License**: [CC BY-NC-SA 4.0](LICENSE)
