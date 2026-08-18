@@ -380,10 +380,10 @@ function AccountRowContent({
                         {!isCurrent && onSetCurrent && !isDisabled && (
                             <button
                                 onClick={(e) => { e.stopPropagation(); onSetCurrent(); }}
-                                className="px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-base-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 text-[10px] font-medium shadow-sm border border-gray-200 dark:border-base-300 transition-all flex items-center gap-1 group/setcurr cursor-pointer"
+                                className="px-2 py-0.5 rounded-md bg-blue-50/90 hover:bg-blue-600 dark:bg-blue-950/70 dark:hover:bg-blue-600 text-blue-600 hover:text-white dark:text-blue-400 dark:hover:text-white text-[10px] font-semibold shadow-xs border border-blue-300/80 dark:border-blue-700/80 hover:border-blue-600 dark:hover:border-blue-600 transition-all flex items-center gap-1 group/setcurr cursor-pointer hover:shadow-sm active:scale-95"
                                 title={t('accounts.set_as_current', '设为当前账号 (不启动应用)')}
                             >
-                                <UserCheck className="w-2.5 h-2.5 opacity-60 group-hover/setcurr:opacity-100 text-blue-500" />
+                                <UserCheck className="w-3 h-3 text-blue-600 dark:text-blue-400 group-hover/setcurr:text-white transition-colors" />
                                 <span>{t('accounts.set_current', '设为当前')}</span>
                             </button>
                         )}
@@ -588,15 +588,6 @@ function AccountRowContent({
                             title={t('accounts.edit_label', 'Edit Label')}
                         >
                             <Tag className="w-3.5 h-3.5" />
-                        </button>
-                    )}
-                    {!isCurrent && onSetCurrent && !isDisabled && (
-                        <button
-                            className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"
-                            onClick={(e) => { e.stopPropagation(); onSetCurrent(); }}
-                            title={t('accounts.set_as_current', '设为当前账号 (不启动应用)')}
-                        >
-                            <UserCheck className="w-3.5 h-3.5 text-blue-500" />
                         </button>
                     )}
                     <button
